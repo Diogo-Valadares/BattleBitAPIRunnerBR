@@ -7,6 +7,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BattleBitAPIRunner", "Battl
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BBRAPIModules", "BBRAPIModules\BBRAPIModules.csproj", "{B17890B8-4D8C-4FA7-BFFB-20679A42AF7B}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BattlebitBRModules", "BattlebitBRModules\BattlebitBRModules.csproj", "{9D3C0948-4587-49E8-B996-302EBA4F9DAF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{B17890B8-4D8C-4FA7-BFFB-20679A42AF7B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B17890B8-4D8C-4FA7-BFFB-20679A42AF7B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B17890B8-4D8C-4FA7-BFFB-20679A42AF7B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9D3C0948-4587-49E8-B996-302EBA4F9DAF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9D3C0948-4587-49E8-B996-302EBA4F9DAF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9D3C0948-4587-49E8-B996-302EBA4F9DAF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9D3C0948-4587-49E8-B996-302EBA4F9DAF}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

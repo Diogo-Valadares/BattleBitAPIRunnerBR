@@ -1,17 +1,14 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
-    <ImplicitUsings>disabled</ImplicitUsings>
+    <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="BattleBitBaseModules.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="BBRAPIModules" Version="0.4.5" />
+    <PackageReference Include="Newtonsoft.Json" PrivateAssets="all" Version="13.0.3" />
   </ItemGroup>
 
 </Project>
