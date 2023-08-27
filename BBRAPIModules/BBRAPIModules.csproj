@@ -6,7 +6,7 @@
 		<Nullable>enable</Nullable>
 		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
 		<Title>BattleBit Remastered Modular Community Server API</Title>
-		<AssemblyVersion>0.4.5</AssemblyVersion>
+		<AssemblyVersion>0.4.7</AssemblyVersion>
 		<FileVersion>$(AssemblyVersion)</FileVersion>
 		<Version>$(AssemblyVersion)</Version>
 		<Authors>RainOrigami</Authors>
@@ -17,7 +17,7 @@
 		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<RepositoryType>git</RepositoryType>
 		<PackageTags>battlebit, battle bit, remastered, community server, api, modules, modular</PackageTags>
-		<PackageIcon>bb api runner icon.png</PackageIcon>
+		<PackageIcon>bbrmodules.png</PackageIcon>
 		<PackageReleaseNotes>- Updated to latest API</PackageReleaseNotes>
 	</PropertyGroup>
 
@@ -29,11 +29,11 @@
 	</ItemGroup>
 
 	<ItemGroup>
-	  <PackageReference Include="CommunityServerAPI" Version="1.0.2.2" />
+	  <PackageReference Include="CommunityServerAPI" Version="1.0.4" />
 	</ItemGroup>
 
 	<ItemGroup>
-	  <None Update="bb api runner icon.png">
+	  <None Update="bbrmodules.png">
 	    <Pack>True</Pack>
 	    <PackagePath>\</PackagePath>
 	  </None>
