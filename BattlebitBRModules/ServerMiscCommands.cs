@@ -1,91 +1,126 @@
 ﻿using BattleBitAPI.Common;
 using BBRAPIModules;
 using Commands;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using System.Threading.Tasks;
 
 namespace BattlebitBRModules
 {
     public class Configuration : ModuleConfiguration
     {
+        //items
         public bool AllowNV { get; set; } = true;
-        public bool KillFeed { get; set; } = true;
+        public bool AllowFlashbang { get; set; } = true;
+        //mechanics
+        public bool AllowKillFeed { get; set; } = true;
         public bool Bleeding { get; set; } = true;
         public bool Stamina { get; set; } = false;
+        //weapons
     }
 
     [RequireModule(typeof(CommandHandler))]
     public class ServerMiscCommands : BattleBitModule
     {
         public Configuration ServerMiscConfig { get; set; }
+        [ModuleReference]
+        public CommandHandler commandHandler { get; set; }
 
-        [CommandCallback("TogItemOn", Description = "Toggles an server item on", AllowedRoles = Roles.Admin)]
-        public void TogItemOn(RunnerPlayer commandSource, string item)
+        public override void OnModulesLoaded()
+        {
+            commandHandler.Register(this);
+        }
+
+        [CommandCallback("TogItem", Description = "Toggles an server item on", AllowedRoles = Roles.Admin)]
+        public void TogItem(RunnerPlayer commandSource, string item, bool on)
         {
             switch (item)
             {
                 case "nv":
                 case "nightvision":
-                    ServerMiscConfig.AllowNV = true;
+                    Server.AnnounceShort("Nightvision is now " + (on ? "enabled" : "disabled"));
+                    ServerMiscConfig.AllowNV = on;
+                    foreach (var player in Server.AllPlayers)
+                    {
+                        player.Modifications.CanUseNightVision = on;
+                    }
                     break;
-            }
-        }
-        [CommandCallback("TogItemOff", Description = "Toggles an server item on", AllowedRoles = Roles.Admin)]
-        public void TogItemOff(RunnerPlayer commandSource, string item)
-        {
-            switch (item)
-            {
-                case "nv":
-                case "nightvision":
-                    ServerMiscConfig.AllowNV = false;
-                    break;
-            }
-        }
-
-        [CommandCallback("TogMechanic on", Description = "Toggles an server mechanic on or off", AllowedRoles = Roles.Admin)]
-        public void TogMechanicOn(RunnerPlayer commandSource, string mechanic)
-        {
-            switch (mechanic)
-            {
-                case "bleeding":
-                    ServerMiscConfig.Bleeding = true;
-                    break;
-                case "killfeed":
-                    ServerMiscConfig.KillFeed = true;
-                    break;
-                case "stamina":
-                    ServerMiscConfig.Stamina = true;
-                    break;
-            }
-        }
-        [CommandCallback("TogMechanic off", Description = "Toggles an server mechanic on or off", AllowedRoles = Roles.Admin)]
-        public void TogMechanicOff(RunnerPlayer commandSource, string mechanic)
-        {
-            switch (mechanic)
-            {
-                case "bleeding":
-                    ServerMiscConfig.Bleeding = false;
-                    break;
-                case "killfeed":
-                    ServerMiscConfig.KillFeed = false;
-                    break;
-                case "stamina":
-                    ServerMiscConfig.Stamina = false;
+                case "flashbang":
+                    ServerMiscConfig.AllowFlashbang = on;
+                    Server.AnnounceShort("Flashbang is now " + (on ? "enabled" : "disabled"));
+                    foreach (var player in Server.AllPlayers)
+                    {
+                        if (player.CurrentLoadout.Throwable.Name == "FlashBang")
+                        {
+                            player.SetLightGadget("Grenade", 0);
+                        }
+                    }
                     break;
             }
         }
 
-        public override async Task OnPlayerSpawned(RunnerPlayer player)
+        [CommandCallback("TogMechanic", Description = "Toggles an server mechanic on or off", AllowedRoles = Roles.Admin)]
+        public void TogMechanic(RunnerPlayer commandSource, string mechanic, bool on)
+        {
+            switch (mechanic)
+            {
+                case "bleeding":
+                    Server.AnnounceShort("Bleeding is now " + (on ? "enabled" : "disabled"));
+                    ServerMiscConfig.Bleeding = on;
+                    if (on)
+                    {
+                        foreach (var player in Server.AllPlayers)
+                        {
+                            player.Modifications.DisableBleeding();
+                        }
+                        break;
+                    }                    
+                    foreach (var player in Server.AllPlayers)
+                    {
+                        player.Modifications.DisableBleeding();
+                    }     
+                    break;
+                case "killfeed":
+                    Server.AnnounceShort("killfeed is now " + (on ? "allowed" : "blocked"));
+                    ServerMiscConfig.AllowKillFeed = on;
+                    break;
+                case "stamina":
+                    Server.AnnounceShort("stamina is now " + (on ? "enabled" : "disabled"));
+                    ServerMiscConfig.Stamina = on;
+                    foreach (var player in Server.AllPlayers)
+                    {
+                        player.Modifications.StaminaEnabled = on;
+                    }
+                    break;
+            }
+        }
+
+        [CommandCallback("KillFeed", Description = "Toggles an server mechanic on or off", AllowedRoles = Roles.Admin)]
+        public void KillFeed(RunnerPlayer commandSource, bool on)
+        {
+            if (!ServerMiscConfig.AllowKillFeed)
+            {
+                Server.MessageToPlayer(commandSource.SteamID, "KillFeed is disabled on this server");
+                return;
+            }
+            commandSource.Modifications.KillFeed = on;
+        }
+
+        public override Task OnPlayerSpawned(RunnerPlayer player)
+        {
+            if (player.CurrentLoadout.Throwable.Name == "FlashBang")
+            {
+                player.SetLightGadget("Grenade", 0);
+            }
+            return Task.CompletedTask;
+        }
+
+        public override Task OnPlayerConnected(RunnerPlayer player)
         {
             player.Modifications.CanUseNightVision = ServerMiscConfig.AllowNV;
-            player.Modifications.KillFeed = ServerMiscConfig.KillFeed;
+            player.Modifications.KillFeed = ServerMiscConfig.AllowKillFeed && player.Modifications.KillFeed;
             if (ServerMiscConfig.Bleeding) player.Modifications.EnableBleeding();
             else player.Modifications.DisableBleeding();
             player.Modifications.StaminaEnabled = ServerMiscConfig.Stamina;
-            await Task.CompletedTask;
+            return Task.CompletedTask;
         }
     }
 }
