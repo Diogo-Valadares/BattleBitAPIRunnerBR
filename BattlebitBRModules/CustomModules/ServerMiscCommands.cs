@@ -150,7 +150,7 @@ namespace BattlebitBRModules
                 case "h":
                     ServerMiscConfig.KillFeed = false;
                     ServerMiscConfig.AirStrafe = false;
-                    //ServerMiscConfig.PointLogHudEnabled = false; não sei oq faz
+                    ServerMiscConfig.PointLogHudEnabled = false;
                     ServerMiscConfig.FriendlyHUDEnabled = false;
                     ServerMiscConfig.HitMarkersEnabled = false;
                     ServerMiscConfig.StaminaEnabled = true;
@@ -169,7 +169,7 @@ namespace BattlebitBRModules
                 case "n":
                     ServerMiscConfig.KillFeed = true;
                     ServerMiscConfig.AirStrafe = true;
-                    ServerMiscConfig.PointLogHudEnabled = false;
+                    ServerMiscConfig.PointLogHudEnabled = true;
                     ServerMiscConfig.FriendlyHUDEnabled = true;
                     ServerMiscConfig.HitMarkersEnabled = true;
                     ServerMiscConfig.StaminaEnabled = false;
