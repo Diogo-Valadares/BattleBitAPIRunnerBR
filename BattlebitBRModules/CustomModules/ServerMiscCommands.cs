@@ -72,11 +72,11 @@ namespace BattlebitBRModules
                             player.Modifications.DisableBleeding();
                         }
                         break;
-                    }                    
+                    }
                     foreach (var player in Server.AllPlayers)
                     {
                         player.Modifications.DisableBleeding();
-                    }     
+                    }
                     break;
                 case "killfeed":
                     Server.AnnounceShort("killfeed is now " + (on ? "allowed" : "blocked"));
@@ -106,7 +106,7 @@ namespace BattlebitBRModules
 
         public override Task OnPlayerSpawned(RunnerPlayer player)
         {
-            if (player.CurrentLoadout.Throwable.Name == "FlashBang")
+            if (!ServerMiscConfig.AllowFlashbang && player.CurrentLoadout.Throwable.Name == "FlashBang")
             {
                 player.SetLightGadget("Grenade", 0);
             }
