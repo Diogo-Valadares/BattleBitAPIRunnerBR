@@ -11,7 +11,6 @@ namespace BattlebitBRModules
         public bool AllowNV { get; set; } = true;
         public bool AllowFlashbang { get; set; } = true;
         //mechanics
-        public bool KillFeed { get; set; } = true;
         public bool Bleeding { get; set; } = true;
         public bool StaminaEnabled { get; set; } = false;
 
@@ -93,10 +92,6 @@ namespace BattlebitBRModules
                         player.Modifications.DisableBleeding();
                     }
                     break;
-                case "killfeed":
-                    Server.AnnounceShort("killfeed is now " + (on ? "allowed" : "blocked"));
-                    ServerMiscConfig.KillFeed = on;
-                    break;
                 case "stamina":
                     Server.AnnounceShort("stamina is now " + (on ? "enabled" : "disabled"));
                     ServerMiscConfig.StaminaEnabled = on;
@@ -106,17 +101,6 @@ namespace BattlebitBRModules
                     }
                     break;
             }
-        }
-
-        [CommandCallback("KillFeed", Description = "Allows any player to turn killfeed on or off")]
-        public void KillFeed(RunnerPlayer commandSource, bool on)
-        {
-            if (!ServerMiscConfig.KillFeed)
-            {
-                Server.MessageToPlayer(commandSource.SteamID, "KillFeed is disabled on this server");
-                return;
-            }
-            commandSource.Modifications.KillFeed = on;
         }
 
         [CommandCallback("Halo", Description = "oooooOOOO°°°°OOOO°°°°OOOoooooo", AllowedRoles = Roles.Admin)]
@@ -148,7 +132,6 @@ namespace BattlebitBRModules
             {
                 case "hardcore":
                 case "h":
-                    ServerMiscConfig.KillFeed = false;
                     ServerMiscConfig.AirStrafe = false;
                     ServerMiscConfig.PointLogHudEnabled = false;
                     ServerMiscConfig.FriendlyHUDEnabled = false;
@@ -167,7 +150,6 @@ namespace BattlebitBRModules
                     break;
                 case "normal":
                 case "n":
-                    ServerMiscConfig.KillFeed = true;
                     ServerMiscConfig.AirStrafe = true;
                     ServerMiscConfig.PointLogHudEnabled = true;
                     ServerMiscConfig.FriendlyHUDEnabled = true;
@@ -186,7 +168,6 @@ namespace BattlebitBRModules
                     break;
                 case "casual":
                 case "c":
-                    ServerMiscConfig.KillFeed = true;
                     ServerMiscConfig.AirStrafe = true;
                     ServerMiscConfig.PointLogHudEnabled = true;
                     ServerMiscConfig.FriendlyHUDEnabled = true;
@@ -205,7 +186,6 @@ namespace BattlebitBRModules
             }
             foreach (var player in Server.AllPlayers)
             {
-                player.Modifications.KillFeed = ServerMiscConfig.KillFeed;
                 player.Modifications.AirStrafe = ServerMiscConfig.AirStrafe;
                 player.Modifications.PointLogHudEnabled = true;
                 player.Modifications.FriendlyHUDEnabled = ServerMiscConfig.FriendlyHUDEnabled;
@@ -244,7 +224,6 @@ namespace BattlebitBRModules
             player.Modifications.CanUseNightVision = ServerMiscConfig.AllowNV;
             player.Modifications.JumpHeightMultiplier = ServerMiscConfig.JumpHeightMultiplier;
 
-            player.Modifications.KillFeed = ServerMiscConfig.KillFeed;
             player.Modifications.AirStrafe = ServerMiscConfig.AirStrafe;
             player.Modifications.PointLogHudEnabled = true;
             player.Modifications.FriendlyHUDEnabled = ServerMiscConfig.FriendlyHUDEnabled;
