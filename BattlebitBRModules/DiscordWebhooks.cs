@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -12,7 +13,8 @@ namespace BattleBitDiscordWebhooks;
 
 /// <summary>
 /// Author: @RainOrigami
-/// Version: 0.4.5.1
+/// Version: 0.4.7
+/// Modified by @Goim
 /// </summary>
 
 public class DiscordWebhooks : BattleBitModule
@@ -32,45 +34,52 @@ public class DiscordWebhooks : BattleBitModule
 
     public override Task OnConnected()
     {
-        discordMessageQueue.Enqueue(new WarningMessage("Server connected to API"));
+        discordMessageQueue.Enqueue(new WarningMessage($" connected to API", this.Configuration.ServerName));
         Task.Run(() => sendChatMessagesToDiscord());
         return Task.CompletedTask;
     }
 
     public override Task OnDisconnected()
     {
-        discordMessageQueue.Enqueue(new WarningMessage("Server disconnected from API"));
+        discordMessageQueue.Enqueue(new WarningMessage($" disconnected from API", this.Configuration.ServerName));
         return base.OnDisconnected();
     }
 
     public override Task<bool> OnPlayerTypedMessage(RunnerPlayer player, ChatChannel channel, string msg)
     {
-        discordMessageQueue.Enqueue(new ChatMessage(player.Name, player.SteamID, channel, msg));
+        discordMessageQueue.Enqueue(new ChatMessage(this.Configuration.ServerName, player.Name, player.SteamID, channel, msg));
 
         return Task.FromResult(true);
     }
 
-    public override Task OnPlayerConnected(RunnerPlayer player)
-    {
-        this.discordMessageQueue.Enqueue(new JoinAndLeaveMessage(this.Server.AllPlayers.Count(), player.Name, player.SteamID, true));
-        return Task.CompletedTask;
-    }
+    //   public override Task OnPlayerConnected(RunnerPlayer player)
+    //   {
+    //       this.discordMessageQueue.Enqueue(new JoinAndLeaveMessage(this.Configuration.ServerName, this.Server.AllPlayers.Count(), player.Name, player.SteamID, true));
+    //       return Task.CompletedTask;
+    //   }
 
-    public override Task OnPlayerDisconnected(RunnerPlayer player)
-    {
-        this.discordMessageQueue.Enqueue(new JoinAndLeaveMessage(this.Server.AllPlayers.Count(), player.Name, player.SteamID, false));
-        return Task.CompletedTask;
-    }
+    //   public override Task OnPlayerDisconnected(RunnerPlayer player)
+    //   {
+    //       this.discordMessageQueue.Enqueue(new JoinAndLeaveMessage(this.Configuration.ServerName, this.Server.AllPlayers.Count(), player.Name, player.SteamID, false));
+    //       return Task.CompletedTask;
+    //   }
 
     public override Task OnPlayerReported(RunnerPlayer from, RunnerPlayer to, ReportReason reason, string additional)
     {
-        this.discordMessageQueue.Enqueue(new WarningMessage($"{from.Name} ({from.SteamID}) reported {to.Name} ({to.SteamID}) for {reason}:{Environment.NewLine}> {additional}"));
+        this.discordMessageQueue.Enqueue(new WarningMessage($" {from.Name} ({from.SteamID}) reported {to.Name} ({to.SteamID}) for {reason}:{Environment.NewLine}> {additional}", this.Configuration.ServerName));
         return Task.CompletedTask;
     }
 
-    public void SendMessage(string message)
+    public void SendMessage(string message, string? webhookURL = null)
     {
-        this.discordMessageQueue.Enqueue(new RawTextMessage(message));
+        if (webhookURL is not null)
+        {
+            Task.Run(() => sendWebhookMessage(webhookURL, message));
+        }
+        else
+        {
+            this.discordMessageQueue.Enqueue(new RawTextMessage(message));
+        }
     }
 
     private async Task sendChatMessagesToDiscord()
@@ -107,7 +116,7 @@ public class DiscordWebhooks : BattleBitModule
                 }
             } while (messages.Count > 0);
 
-            await Task.Delay(250);
+            await Task.Delay(5000);
         } while (this.Server?.IsConnected == true);
     }
 
@@ -160,8 +169,9 @@ internal class ChatMessage : DiscordMessage
 {
     public string PlayerName { get; set; } = string.Empty;
 
-    public ChatMessage(string playerName, ulong steamID, ChatChannel channel, string message)
+    public ChatMessage(string serverName, string playerName, ulong steamID, ChatChannel channel, string message)
     {
+        this.ServerName = serverName;
         this.PlayerName = playerName;
         this.SteamID = steamID;
         this.Channel = channel;
@@ -171,10 +181,11 @@ internal class ChatMessage : DiscordMessage
     public ulong SteamID { get; set; }
     public ChatChannel Channel { get; set; }
     public string Message { get; set; } = string.Empty;
+    public string ServerName { get; set; } = string.Empty;
 
     public override string ToString()
     {
-        return $":speech_balloon: [{this.SteamID}] {this.PlayerName}: {this.Message}";
+        return $":speech_balloon: {this.ServerName} [{this.SteamID}] {this.PlayerName}: {this.Message}";
     }
 }
 
@@ -182,8 +193,9 @@ internal class JoinAndLeaveMessage : DiscordMessage
 {
     public int PlayerCount { get; set; }
 
-    public JoinAndLeaveMessage(int playerCount, string playerName, ulong steamID, bool joined)
+    public JoinAndLeaveMessage(string serverName, int playerCount, string playerName, ulong steamID, bool joined)
     {
+        this.ServerName = serverName;
         this.PlayerCount = playerCount;
         this.PlayerName = playerName;
         this.SteamID = steamID;
@@ -191,6 +203,7 @@ internal class JoinAndLeaveMessage : DiscordMessage
     }
 
     public string PlayerName { get; set; } = string.Empty;
+    public string ServerName { get; set; } = string.Empty;
     public ulong SteamID { get; set; }
     public bool Joined { get; set; }
 
@@ -202,22 +215,26 @@ internal class JoinAndLeaveMessage : DiscordMessage
 
 internal class WarningMessage : DiscordMessage
 {
-    public WarningMessage(string message)
+    public WarningMessage(string message, string serverName)
     {
+        this.ServerName = serverName;
         this.Message = message;
     }
 
     public bool IsError { get; set; }
 
+    public string ServerName { get; set; }
+
     public string Message { get; set; }
 
     public override string ToString()
     {
-        return $":warning: {this.Message}";
+        return $":warning: {this.ServerName} {this.Message}";
     }
 }
 
 public class WebhookConfiguration : ModuleConfiguration
 {
     public string WebhookURL { get; set; } = string.Empty;
+    public string ServerName { get; set; } = string.Empty;
 }

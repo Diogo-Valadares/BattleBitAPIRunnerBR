@@ -14,9 +14,7 @@ namespace BattlebitBRModules
         public bool Bleeding { get; set; } = true;
         public bool StaminaEnabled { get; set; } = false;
 
-        public bool FriendlyHUDEnabled { get; set; } = true;
-        public bool HitMarkersEnabled { get; set; } = true;
-        public bool PointLogHudEnabled { get; set; } = true;
+
         public float BleedMinLife { get; set; } = 40;
         public float HpPerBandage { get; set; } = 40;
         public float ReloadSpeedMultiplier { get; set; } = 1f;
@@ -31,13 +29,14 @@ namespace BattlebitBRModules
         public bool AirStrafe { get; set; } = true;
     }
 
-    [RequireModule(typeof(CommandHandler))]
+    [RequireModule(typeof(CommandHandler)), RequireModule(typeof(HudCommands))]
     public class ServerMiscCommands : BattleBitModule
     {
         public Configuration ServerMiscConfig { get; set; }
         [ModuleReference]
         public CommandHandler commandHandler { get; set; }
-
+        [ModuleReference]
+        public HudCommands hudCommands { get; set; }
         public override void OnModulesLoaded()
         {
             commandHandler.Register(this);
@@ -133,9 +132,9 @@ namespace BattlebitBRModules
                 case "hardcore":
                 case "h":
                     ServerMiscConfig.AirStrafe = false;
-                    ServerMiscConfig.PointLogHudEnabled = false;
-                    ServerMiscConfig.FriendlyHUDEnabled = false;
-                    ServerMiscConfig.HitMarkersEnabled = false;
+                    hudCommands.HudConfig.PointLogHudEnabled = false;
+                    hudCommands.HudConfig.FriendlyHUDEnabled = false;
+                    hudCommands.HudConfig.HitMarkersEnabled = false;
                     ServerMiscConfig.StaminaEnabled = true;
                     ServerMiscConfig.BleedMinLife = 75;
                     ServerMiscConfig.Bleeding = true;
@@ -151,9 +150,9 @@ namespace BattlebitBRModules
                 case "normal":
                 case "n":
                     ServerMiscConfig.AirStrafe = true;
-                    ServerMiscConfig.PointLogHudEnabled = true;
-                    ServerMiscConfig.FriendlyHUDEnabled = true;
-                    ServerMiscConfig.HitMarkersEnabled = true;
+                    hudCommands.HudConfig.PointLogHudEnabled = true;
+                    hudCommands.HudConfig.FriendlyHUDEnabled = true;
+                    hudCommands.HudConfig.HitMarkersEnabled = true;
                     ServerMiscConfig.StaminaEnabled = false;
                     ServerMiscConfig.BleedMinLife = 40;
                     ServerMiscConfig.Bleeding = true;
@@ -169,9 +168,9 @@ namespace BattlebitBRModules
                 case "casual":
                 case "c":
                     ServerMiscConfig.AirStrafe = true;
-                    ServerMiscConfig.PointLogHudEnabled = true;
-                    ServerMiscConfig.FriendlyHUDEnabled = true;
-                    ServerMiscConfig.HitMarkersEnabled = true;
+                    hudCommands.HudConfig.PointLogHudEnabled = true;
+                    hudCommands.HudConfig.FriendlyHUDEnabled = true;
+                    hudCommands.HudConfig.HitMarkersEnabled = true;
                     ServerMiscConfig.StaminaEnabled = false;
                     ServerMiscConfig.Bleeding = false;
                     ServerMiscConfig.HpPerBandage = 50f;
@@ -188,8 +187,8 @@ namespace BattlebitBRModules
             {
                 player.Modifications.AirStrafe = ServerMiscConfig.AirStrafe;
                 player.Modifications.PointLogHudEnabled = true;
-                player.Modifications.FriendlyHUDEnabled = ServerMiscConfig.FriendlyHUDEnabled;
-                player.Modifications.HitMarkersEnabled = ServerMiscConfig.HitMarkersEnabled;
+                player.Modifications.FriendlyHUDEnabled = hudCommands.HudConfig.FriendlyHUDEnabled;
+                player.Modifications.HitMarkersEnabled = hudCommands.HudConfig.HitMarkersEnabled;
                 player.Modifications.StaminaEnabled = ServerMiscConfig.StaminaEnabled;
                 player.Modifications.HpPerBandage = ServerMiscConfig.HpPerBandage;
                 player.Modifications.ReloadSpeedMultiplier = ServerMiscConfig.ReloadSpeedMultiplier;
@@ -226,8 +225,8 @@ namespace BattlebitBRModules
 
             player.Modifications.AirStrafe = ServerMiscConfig.AirStrafe;
             player.Modifications.PointLogHudEnabled = true;
-            player.Modifications.FriendlyHUDEnabled = ServerMiscConfig.FriendlyHUDEnabled;
-            player.Modifications.HitMarkersEnabled = ServerMiscConfig.HitMarkersEnabled;
+            player.Modifications.FriendlyHUDEnabled = hudCommands.HudConfig.FriendlyHUDEnabled;
+            player.Modifications.HitMarkersEnabled = hudCommands.HudConfig.HitMarkersEnabled;
             player.Modifications.StaminaEnabled = ServerMiscConfig.StaminaEnabled;
             player.Modifications.HpPerBandage = ServerMiscConfig.HpPerBandage;
             player.Modifications.ReloadSpeedMultiplier = ServerMiscConfig.ReloadSpeedMultiplier;
