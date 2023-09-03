@@ -3,13 +3,16 @@ using BBRAPIModules;
 using Commands;
 using System.Threading.Tasks;
 
+/// <summary>
+/// Author: @_dx2
+/// Version: 1.1
+/// </summary>
+/// 
 namespace BattlebitBRModules
 {
     public class PlayerHudConfiguration : ModuleConfiguration
     {
-        public bool KillFeed { get; set; } = true;
         public bool KillFeedAllowed { get; set; } = true;
-
         public bool FriendlyHUDEnabled { get; set; } = true;
         public bool HitMarkersEnabled { get; set; } = true;
         public bool PointLogHudEnabled { get; set; } = true;
@@ -85,12 +88,12 @@ namespace BattlebitBRModules
         {
             if (!HudConfig.KillFeedAllowed)
             {
-                Server.MessageToPlayer(commandSource.SteamID, "KillFeed is disabled on this server");
+                Server.MessageToPlayer(commandSource, "KillFeed is disabled on this server");
                 return;
             }
             commandSource.Modifications.KillFeed = !commandSource.Modifications.KillFeed;
 
-            Server.MessageToPlayer(commandSource.SteamID, "KillFeed " + (commandSource.Modifications.KillFeed ? "ligadas" : "desligadas"));
+            Server.MessageToPlayer(commandSource, "KillFeed " + (commandSource.Modifications.KillFeed ? "ligado" : "desligado"));
         }
 
 

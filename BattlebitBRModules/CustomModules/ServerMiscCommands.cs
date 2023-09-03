@@ -3,6 +3,9 @@ using BBRAPIModules;
 using Commands;
 using System.Threading.Tasks;
 
+/// <summary>
+/// DO NOT USE, STILL IN DEVELOPMENT
+/// </summary>
 namespace BattlebitBRModules
 {
     public class Configuration : ModuleConfiguration

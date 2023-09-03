@@ -2,26 +2,31 @@
 using System;
 using System.Threading.Tasks;
 
-namespace BattleBitBaseModules;
-
 /// <summary>
-/// Author: @RainOrigami
-/// Version: 0.4.7
+/// Author: @_dx2
+/// Version: 1.0
 /// </summary>
+/// 
+namespace BattleBitBaseModules;
 
 public class Announcements : BattleBitModule
 {
     public AnnouncementsTexts AnnouncementsConfig { get; set; }
 
     private int lastIndex = 0;
-    private DateTime lastAnnouncement = DateTime.Today;
+    private DateTime lastAnnouncement;
+
+    public override void OnModulesLoaded()
+    {
+        lastAnnouncement = DateTime.MinValue;
+    }
 
     public override Task OnTick()
     {
-        if (lastAnnouncement.AddSeconds(AnnouncementsConfig.SecondsBetweenAnouncements) > DateTime.Now)
+        if (DateTime.Now > lastAnnouncement.AddSeconds(AnnouncementsConfig.SecondsBetweenAnouncements))
         {
             Server.SayToAllChat(AnnouncementsConfig.Announcements[lastIndex]);
-            lastIndex = (lastIndex + 1 == AnnouncementsConfig.Announcements.Length) ? 0 : lastIndex + 1;
+            lastIndex = (lastIndex + 1 >= AnnouncementsConfig.Announcements.Length) ? 0 : lastIndex + 1;
             lastAnnouncement = DateTime.Now;
         }
         return Task.CompletedTask;
