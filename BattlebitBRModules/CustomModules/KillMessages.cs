@@ -19,7 +19,11 @@ public class KillMessages : BattleBitModule
         switch (onPlayerKill.KillerTool)
         {
             case "SledgeHammer":
+            case "SledgeHammerSkinA":
+            case "SledgeHammerSkinB":
+            case "SledgeHammerSkinC":
             case "Pickaxe":
+            case "PickaxeIronPickaxe":
                 Server.SayToAllChat(onPlayerKill.Killer.Name + " passou a lambida em " + onPlayerKill.Victim.Name);
                 break;
             case "SuicideC4":
