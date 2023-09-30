@@ -1,6 +1,10 @@
 ﻿using BattleBitAPI.Common;
 using BattleBitAPI.Server;
 using BBRAPIModules;
+using log4net;
+using log4net.Config;
+using log4net.Core;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Operations;
 using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json;
@@ -21,15 +25,21 @@ namespace BattleBitAPIRunner
             new Program();
         }
 
+        private ILog logger = null!;
+
         private ServerConfiguration configuration = new();
         private List<RunnerServer> servers = new();
         private ServerListener<RunnerPlayer, RunnerServer> serverListener = new();
         private Dictionary<string, (string Hash, DateTime LastModified)> watchedFiles = new();
+        private Permissions permissions = null!;
 
         public Program()
         {
+            configureLogger();
             loadConfiguration();
             validateConfiguration();
+            loadPermissions();
+            this.logger.Info("Loading dependencies");
             loadDependencies();
             loadModules();
             hookModules();
@@ -37,6 +47,49 @@ namespace BattleBitAPIRunner
             startServerListener();
 
             consoleCommandHandler();
+
+            Thread.Sleep(-1);
+        }
+
+        private void loadPermissions()
+        {
+            this.permissions = new(configuration.ConfigurationPath);
+            this.watchedFiles.Add(Path.Combine(this.configuration.ConfigurationPath, Permissions.PermissionsFile), (string.Empty, DateTime.MinValue));
+            this.watchedFiles.Add(Path.Combine(this.configuration.ConfigurationPath, Permissions.PlayerPermissionsFile), (string.Empty, DateTime.MinValue));
+            this.watchedFiles.Add(Path.Combine(this.configuration.ConfigurationPath, Permissions.PlayerGroupsFile), (string.Empty, DateTime.MinValue));
+        }
+
+        private void configureLogger()
+        {
+            string log4netConfig = "log4net.config";
+            if (!File.Exists(log4netConfig))
+            {
+                File.WriteAllText(log4netConfig, @"<?xml version=""1.0"" encoding=""utf-8"" ?>
+<log4net>
+    <root>
+        <level value=""INFO"" />
+        <appender-ref ref=""ColoredConsoleAppender"" />
+    </root>
+    <appender name=""ColoredConsoleAppender"" type=""log4net.Appender.ColoredConsoleAppender"">
+        <layout type=""log4net.Layout.PatternLayout"">
+            <conversionPattern value=""%date [%type{1}] %level - %message%newline"" />
+        </layout>
+		<mapping>
+			<level value=""WARN"" />
+			<foreColor value=""Yellow"" />
+		</mapping>
+		<mapping>
+			<level value=""ERROR"" />
+			<foreColor value=""Red"" />
+		</mapping>
+    </appender>
+</log4net>");
+            }
+
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+            XmlConfigurator.Configure(new FileInfo(log4netConfig));
+
+            logger = LogManager.GetLogger("Runner");
         }
 
         private void fileWatchers()
@@ -75,6 +128,27 @@ namespace BattleBitAPIRunner
                     {
                         try
                         {
+                            // Try compile changed modules before unloading old ones
+                            foreach (string moduleFile in changedModules.ToArray())
+                            {
+                                Module? changedModule = null;
+                                try
+                                {
+                                    changedModule = new(moduleFile);
+                                    changedModule.Compile(this.binaryDependencies);
+                                }
+                                catch (Exception ex)
+                                {
+                                    logger.Error($"Could not hot reload module {changedModule?.Name ?? Path.GetFileNameWithoutExtension(moduleFile)}. Running module will be kept", ex);
+                                    changedModules.Remove(moduleFile);
+                                }
+                            }
+
+                            if (!changedModules.Any())
+                            {
+                                continue;
+                            }
+
                             unloadModules();
 
                             foreach (string moduleFile in changedModules)
@@ -91,7 +165,7 @@ namespace BattleBitAPIRunner
                         }
                         catch (Exception ex)
                         {
-                            await Console.Out.WriteLineAsync($"Failed dynamic loading of modules {string.Join(", ", changedModules.Select(f => Path.GetFileNameWithoutExtension(f)))}: {ex}");
+                            logger.Error($"Failed dynamic loading of modules {string.Join(", ", changedModules.Select(f => Path.GetFileNameWithoutExtension(f)))}", ex);
                         }
                     }
 
@@ -117,23 +191,63 @@ namespace BattleBitAPIRunner
                 Directory.CreateDirectory(this.configuration.DependencyPath);
             }
 
+            List<PortableExecutableReference> binaryDependencies = new();
+
             foreach (string dependency in Directory.GetFiles(this.configuration.DependencyPath, "*.dll"))
             {
-                Assembly.LoadFrom(dependency);
+                binaryDependencies.Add(MetadataReference.CreateFromFile(dependency));
             }
+
+            this.binaryDependencies = binaryDependencies.ToArray();
+
+            Module.LoadContext(Directory.GetFiles(this.configuration.DependencyPath, "*.dll"));
         }
+
+        private PortableExecutableReference[] binaryDependencies = Array.Empty<PortableExecutableReference>();
 
         private void consoleCommandHandler()
         {
+            if (Console.In is null)
+            {
+                logger.Info("No std in stream available.");
+                return;
+            }
+
             // TODO: Make proper console handler ncurses style (separate line for input, rest of window for output)
             while (true)
             {
-                string command = Console.ReadLine();
+                string? command = Console.ReadLine();
+                if (command is null)
+                {
+                    logger.Info("No std in stream available.");
+                    return;
+                }
 
                 string[] commandParts = command.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 if (commandParts.Length == 0)
                 {
                     continue;
+                }
+
+                foreach (RunnerServer server in this.servers)
+                {
+                    List<BattleBitModule> instances = new();
+                    foreach (Module module in Module.Modules)
+                    {
+                        BattleBitModule? moduleInstance = server.GetModule(module.ModuleType!);
+                        if (moduleInstance is null)
+                        {
+                            continue;
+                        }
+
+                        instances.Add(moduleInstance);
+                        moduleInstance.OnConsoleCommand(command);
+                    }
+
+                    foreach (BattleBitModule moduleInstance in instances)
+                    {
+                        moduleInstance.Unload();
+                    }
                 }
 
                 switch (commandParts[0])
@@ -172,19 +286,29 @@ namespace BattleBitAPIRunner
                     case "reload":
                         if (commandParts.Length < 2)
                         {
-                            Console.ForegroundColor = ConsoleColor.Red;
-                            Console.WriteLine("Usage: reload <module>");
-                            Console.ResetColor();
+                            logger.Error("Usage: reload <module>");
                             break;
                         }
 
                         string moduleName = commandParts[1];
-                        Module? moduleToLoad = Module.Modules.FirstOrDefault(m => m.Name.Equals(moduleName, StringComparison.OrdinalIgnoreCase));
+
+                        Module? moduleToLoad = Module.Modules.FirstOrDefault(m => m.Name!.Equals(moduleName, StringComparison.OrdinalIgnoreCase));
+
                         if (moduleToLoad is null)
                         {
-                            Console.ForegroundColor = ConsoleColor.Red;
-                            Console.WriteLine($"Module {moduleName} not found.");
-                            Console.ResetColor();
+                            logger.Error($"Module {moduleName} not found.");
+                            break;
+                        }
+
+                        Module? loadedModule = null;
+                        try
+                        {
+                            loadedModule = new(moduleToLoad.ModuleFilePath);
+                            loadedModule.Compile(this.binaryDependencies);
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.Error($"Could not hot reload module {loadedModule?.Name ?? moduleToLoad.Name}. Running module will be kept.", ex);
                             break;
                         }
 
@@ -205,7 +329,7 @@ namespace BattleBitAPIRunner
                 List<BattleBitModule> instances = new();
                 foreach (Module module in Module.Modules)
                 {
-                    BattleBitModule? moduleInstance = server.GetModule(module.ModuleType);
+                    BattleBitModule? moduleInstance = server.GetModule(module.ModuleType!);
                     if (moduleInstance is null)
                     {
                         continue;
@@ -222,19 +346,18 @@ namespace BattleBitAPIRunner
             }
 
             Module.UnloadContext();
+            Module.LoadContext(Directory.GetFiles(this.configuration.DependencyPath, "*.dll"));
         }
 
         private void loadModules()
         {
-            Module[] modules = Directory.GetFiles(this.configuration.ModulesPath, "*.cs").Union(this.configuration.Modules).Where(f => Module.Modules.All(m => m.Name != Path.GetFileNameWithoutExtension(f))).Select(m =>
+            string[] moduleFiles = Directory.GetFiles(this.configuration.ModulesPath, "*.cs").Union(this.configuration.Modules).ToArray();
+            Module[] modules = moduleFiles.Where(f => Module.Modules.All(m => m.Name != Path.GetFileNameWithoutExtension(f))).Select(m =>
             {
                 try { return new Module(m); }
                 catch (Exception ex)
                 {
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine($"Failed to load module {Path.GetFileName(m)}");
-                    Console.ResetColor();
-                    Console.WriteLine(ex.ToString());
+                    logger.Error($"Failed to load module {Path.GetFileName(m)}", ex);
                     return null;
                 }
             }).Where(m => m is not null).Select(m => m!).Union(Module.Modules).ToArray();
@@ -244,14 +367,14 @@ namespace BattleBitAPIRunner
                 Module.RemoveModule(toRemove);
             }
 
-            foreach (Module toWatch in modules)
+            foreach (string toWatch in moduleFiles)
             {
-                if (this.watchedFiles.ContainsKey(toWatch.ModuleFilePath))
+                if (this.watchedFiles.ContainsKey(toWatch))
                 {
                     continue;
                 }
 
-                this.watchedFiles.Add(toWatch.ModuleFilePath, (CalculateFileHash(new FileInfo(toWatch.ModuleFilePath)), File.GetLastWriteTime(toWatch.ModuleFilePath)));
+                this.watchedFiles.Add(toWatch, (CalculateFileHash(new FileInfo(toWatch)), File.GetLastWriteTime(toWatch)));
             }
 
             Module[][] duplicateModules = modules.GroupBy(m => m.Name).Where(g => g.Count() > 1).Select(g => g.ToArray()).ToArray();
@@ -259,12 +382,10 @@ namespace BattleBitAPIRunner
             {
                 foreach (Module[] duplicate in duplicateModules)
                 {
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine($"Duplicate modules found for {duplicate[0].Name}:");
-                    Console.ResetColor();
+                    logger.Error($"Duplicate modules found for {duplicate[0].Name}");
                     foreach (Module module in duplicate)
                     {
-                        Console.WriteLine($"  {module.ModuleFilePath}");
+                        logger.Error($"  {module.ModuleFilePath}");
                     }
                 }
                 throw new Exception("Duplicate modules found, aborting startup.");
@@ -278,19 +399,20 @@ namespace BattleBitAPIRunner
             {
                 try
                 {
-                    string[] missingRequirements = module.RequiredDependencies.Where(r => sortedModules.All(m => m.Name != r)).ToArray();
+                    string[] missingRequirements = module.RequiredDependencies!.Where(r => sortedModules.All(m => m.Name != r)).ToArray();
                     if (missingRequirements.Length > 0)
                     {
-                        Console.ForegroundColor = ConsoleColor.Red;
-                        Console.WriteLine($"Module {module.Name} is missing required dependencies:");
-                        Console.ResetColor();
-                        Console.WriteLine($"{string.Join(Environment.NewLine, missingRequirements)}");
+                        logger.Error($"Module {module.Name} is missing required dependencies:");
+                        foreach (string missingRequirement in missingRequirements)
+                        {
+                            logger.Error($"  {missingRequirement}");
+                        }
                         continue;
                     }
 
                     if (module.AssemblyBytes is null)
                     {
-                        module.Compile();
+                        module.Compile(this.binaryDependencies);
                         compiledModuleCount++;
                     }
 
@@ -298,26 +420,19 @@ namespace BattleBitAPIRunner
                 }
                 catch (Exception ex)
                 {
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine($"Failed to load module {Path.GetFileName(module.Name)}");
-                    Console.ResetColor();
-                    Console.WriteLine(ex.ToString());
+                    logger.Error($"Failed to load module {Path.GetFileName(module.Name)}", ex);
                     continue;
                 }
 
-                Console.ForegroundColor = ConsoleColor.Green;
-                Console.Write($"Loaded module ");
-                Console.ResetColor();
-                Console.WriteLine(module.Name);
+                logger.Info($"Loaded module {module.Name}");
             }
 
-            Console.WriteLine();
-            Console.WriteLine($"{(compiledModuleCount == Module.Modules.Count ? Module.Modules.Count.ToString() : $"{compiledModuleCount} changed, {Module.Modules.Count} total")} module{(Module.Modules.Count != 1 ? "s" : "")} loaded.");
+            logger.Info($"{(compiledModuleCount == Module.Modules.Count ? Module.Modules.Count.ToString() : $"{compiledModuleCount} changed, {Module.Modules.Count} total")} module{(Module.Modules.Count != 1 ? "s" : "")} loaded.");
 
             foreach (RunnerServer server in this.servers)
             {
                 loadServerModules(server);
-                server.OnConnected();
+                _ = server.OnConnected();
             }
         }
 
@@ -325,9 +440,10 @@ namespace BattleBitAPIRunner
         {
             this.serverListener.OnCreatingGameServerInstance = initializeGameServer;
         }
+
         private RunnerServer initializeGameServer(IPAddress ip, ushort port)
         {
-            RunnerServer server = new RunnerServer();
+            RunnerServer server = new RunnerServer(ip, port, this.configuration.WarningThreshold);
             this.servers.Add(server);
 
             loadServerModules(server, ip, port);
@@ -341,29 +457,29 @@ namespace BattleBitAPIRunner
 
             foreach (Module module in Module.Modules)
             {
-                BattleBitModule moduleInstance;
+                BattleBitModule? moduleInstance;
                 try
                 {
-                    moduleInstance = Activator.CreateInstance(module.ModuleType) as BattleBitModule;
+                    moduleInstance = Activator.CreateInstance(module.ModuleType!) as BattleBitModule;
                     if (moduleInstance is null)
                     {
                         throw new Exception($"Not inheriting from {nameof(BattleBitModule)}");
                     }
+                    ILog logger = LogManager.GetLogger($"{module.Name} of {ip ?? server.GameIP}:{port ?? server.GamePort}");
+                    moduleInstance.SetPermissions(this.permissions);
+                    moduleInstance.SetLogger(logger);
                     moduleInstance.SetServer(server);
                     server.AddModule(moduleInstance);
                     battleBitModules.Add(moduleInstance);
                 }
                 catch (Exception ex)
                 {
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine($"Failed to load module {module.Name}:");
-                    Console.ResetColor();
-                    Console.WriteLine(ex.ToString());
+                    logger.Error($"Failed to load module {module.Name}", ex);
                     continue;
                 }
 
                 // Module configurations
-                foreach (PropertyInfo property in module.ModuleType.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly).Where(p => p.PropertyType.IsAssignableTo(typeof(ModuleConfiguration))))
+                foreach (PropertyInfo property in module.ModuleType!.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly).Where(p => p.PropertyType.IsAssignableTo(typeof(ModuleConfiguration))))
                 {
                     try
                     {
@@ -372,7 +488,7 @@ namespace BattleBitAPIRunner
                             throw new Exception($"Configuration does not inherit from {nameof(ModuleConfiguration)}");
                         }
 
-                        ModuleConfiguration moduleConfiguration = Activator.CreateInstance(property.PropertyType) as ModuleConfiguration;
+                        ModuleConfiguration moduleConfiguration = (Activator.CreateInstance(property.PropertyType) as ModuleConfiguration)!;
                         moduleConfiguration.Initialize(moduleInstance, property, $"{ip ?? server.GameIP}_{port ?? server.GamePort}");
                         moduleConfiguration.OnLoadingRequest += ModuleConfiguration_OnLoadingRequest;
                         moduleConfiguration.OnSavingRequest += ModuleConfiguration_OnSavingRequest;
@@ -380,14 +496,13 @@ namespace BattleBitAPIRunner
                     }
                     catch (Exception ex)
                     {
-                        Console.ForegroundColor = ConsoleColor.Red;
-                        Console.WriteLine($"Failed to load module {module.Name} configuration {property.Name}:");
-                        Console.ResetColor();
-                        Console.WriteLine(ex.ToString());
+                        logger.Error($"Failed to load module {module.Name} configuration {property.Name}", ex);
                         continue;
                     }
                 }
             }
+
+            battleBitModules = battleBitModules.Where(m => m.Server is not null).ToList();
 
             foreach (BattleBitModule battleBitModule in battleBitModules)
             {
@@ -421,18 +536,13 @@ namespace BattleBitAPIRunner
                 }
                 catch (Exception ex)
                 {
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine($"Method {nameof(battleBitModule.OnModulesLoaded)} on module {battleBitModule.GetType().Name} threw an exception:");
-                    Console.ResetColor();
-                    Console.WriteLine(ex.ToString());
+                    logger.Error($"Method {nameof(battleBitModule.OnModulesLoaded)} on module {battleBitModule.GetType().Name} threw an exception", ex);
                 }
                 stopwatch.Stop();
 
                 if (stopwatch.ElapsedMilliseconds > this.configuration.WarningThreshold)
                 {
-                    Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.WriteLine($"Method {nameof(battleBitModule.OnModulesLoaded)} on module {battleBitModule.GetType().Name} took {stopwatch.ElapsedMilliseconds}ms to execute.");
-                    Console.ResetColor();
+                    logger.Warn($"Method {nameof(battleBitModule.OnModulesLoaded)} on module {battleBitModule.GetType().Name} took {stopwatch.ElapsedMilliseconds}ms to execute.");
                 }
             }
         }
@@ -448,7 +558,7 @@ namespace BattleBitAPIRunner
 
             if (!Directory.Exists(Path.GetDirectoryName(filePath)))
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(filePath));
+                Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
             }
 
             object? configurationValue = property.GetValue(module);
@@ -471,17 +581,28 @@ namespace BattleBitAPIRunner
 
             if (!Directory.Exists(Path.GetDirectoryName(filePath)))
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(filePath));
+                Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
             }
 
             // Create instance of type of the property if it doesn't exist
             ModuleConfiguration? configurationValue = property.GetValue(module) as ModuleConfiguration;
+
+            if (File.Exists(filePath))
+            {
+                configurationValue = JsonConvert.DeserializeObject(File.ReadAllText(filePath), property.PropertyType, new JsonSerializerSettings() { ObjectCreationHandling = ObjectCreationHandling.Replace }) as ModuleConfiguration;
+
+                if (configurationValue is null)
+                {
+                    logger.Error($"Failed to load configuration {property.Name} for module {module.GetType().Name}.");
+
+                    module.Unload();
+                    return;
+                }
+            }
+
             if (configurationValue is null)
             {
                 configurationValue = Activator.CreateInstance(property.PropertyType) as ModuleConfiguration;
-                configurationValue!.Initialize(module, property, serverName);
-                configurationValue.OnLoadingRequest += ModuleConfiguration_OnLoadingRequest;
-                configurationValue.OnSavingRequest += ModuleConfiguration_OnSavingRequest;
 
                 if (!File.Exists(filePath))
                 {
@@ -489,14 +610,10 @@ namespace BattleBitAPIRunner
                 }
             }
 
-            if (File.Exists(filePath))
-            {
-                configurationValue = JsonConvert.DeserializeObject(File.ReadAllText(filePath), property.PropertyType) as ModuleConfiguration;
-                configurationValue.Initialize(module, property, serverName);
-                configurationValue.OnLoadingRequest += ModuleConfiguration_OnLoadingRequest;
-                configurationValue.OnSavingRequest += ModuleConfiguration_OnSavingRequest;
-                property.SetValue(module, configurationValue);
-            }
+            configurationValue!.Initialize(module, property, serverName);
+            configurationValue.OnLoadingRequest += ModuleConfiguration_OnLoadingRequest;
+            configurationValue.OnSavingRequest += ModuleConfiguration_OnSavingRequest;
+            property.SetValue(module, configurationValue);
         }
 
         private void startServerListener()
@@ -504,26 +621,32 @@ namespace BattleBitAPIRunner
             this.serverListener.LogLevel = this.configuration.LogLevel;
             this.serverListener.OnLog += this.serverListener_OnLog;
             this.serverListener.Start(this.configuration.IPAddress, this.configuration.Port!.Value);
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.Write($"Listener started at ");
-            Console.ResetColor();
-            Console.WriteLine($"{this.configuration.IPAddress}:{this.configuration.Port.Value}");
+
+            logger.Info($"Listener started at {this.configuration.IPAddress}:{this.configuration.Port.Value}");
         }
 
         private void serverListener_OnLog(LogLevel level, string message, object? obj)
         {
-            Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine($"[{level}] {message}");
-            Console.ResetColor();
+            logger.Info($"[{level}] {message}");
         }
 
         private void loadConfiguration()
         {
+            if (!File.Exists("appsettings.json"))
+            {
+                File.WriteAllText("appsettings.json", JsonConvert.SerializeObject(this.configuration, Formatting.Indented));
+            }
+
             new ConfigurationBuilder()
                 .SetBasePath(Directory.GetCurrentDirectory())
                 .AddJsonFile("appsettings.json")
                 .Build()
                 .Bind(this.configuration);
+
+            if (!Directory.Exists(this.configuration.ConfigurationPath))
+            {
+                Directory.CreateDirectory(this.configuration.ConfigurationPath);
+            }
         }
 
         private void validateConfiguration()

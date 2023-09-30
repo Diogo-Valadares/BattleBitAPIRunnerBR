@@ -1,4 +1,6 @@
-﻿using BBRAPIModules;
+﻿using BattleBitAPI.Common;
+using BattleBitAPI;
+using BBRAPIModules;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -13,6 +15,10 @@ using System.Runtime.Loader;
 using System.Text;
 using System.Threading.Tasks;
 using System.Xml.Linq;
+using BattleBitAPI.Server;
+using log4net;
+
+[assembly: InternalsVisibleTo("BBRAPIModuleVerification")]
 
 namespace BattleBitAPIRunner
 {
@@ -25,15 +31,69 @@ namespace BattleBitAPIRunner
         public AssemblyLoadContext? Context { get; private set; }
         public Type? ModuleType { get; private set; }
         public string? Name { get; private set; }
+        public string? Description { get; private set; }
+        public string? Version { get; private set; }
         public string[]? RequiredDependencies { get; private set; }
         public string[]? OptionalDependencies { get; private set; }
-        public byte[] AssemblyBytes { get; private set; }
-        public byte[] PDBBytes { get; private set; }
+        public byte[] AssemblyBytes { get; private set; } = null!;
+        public byte[] PDBBytes { get; private set; } = null!;
         public string ModuleFilePath { get; }
         public Assembly? ModuleAssembly { get; private set; }
 
-        private SyntaxTree syntaxTree;
-        private string code;
+        private static ILog logger = LogManager.GetLogger("Runner");
+
+        private SyntaxTree syntaxTree = null!;
+        private string code = null!;
+
+        public static void LoadContext(string[] dependencies)
+        {
+            if (baseReferences is null)
+            {
+                loadReferences(dependencies);
+            }
+
+            loadDepedencies(dependencies);
+        }
+
+
+
+        private static void loadReferences(string[] dependencies)
+        {
+            List<PortableExecutableReference> references = new()
+            {
+                MetadataReference.CreateFromFile(typeof(BattleBitModule).Assembly.Location),
+                MetadataReference.CreateFromFile(typeof(Player<>).Assembly.Location),
+                MetadataReference.CreateFromFile(typeof(ILog).Assembly.Location),
+            };
+
+            foreach (string dll in Directory.GetFiles(Path.GetDirectoryName(typeof(object).Assembly.Location)!, "*.dll"))
+            {
+
+                if (!IsAssemblyValidReference(dll))
+                {
+                    continue;
+                }
+
+                references.Add(MetadataReference.CreateFromFile(dll));
+
+            }
+
+            foreach (string dependency in dependencies)
+            {
+
+                references.Add(MetadataReference.CreateFromFile(Path.GetFullPath(dependency)));
+            }
+
+            baseReferences = references.ToArray();
+        }
+
+        private static void loadDepedencies(string[] dependencies)
+        {
+            foreach (string dependency in dependencies)
+            {
+                moduleContext.LoadFromAssemblyPath(Path.GetFullPath(dependency));
+            }
+        }
 
         public static void UnloadContext()
         {
@@ -54,22 +114,38 @@ namespace BattleBitAPIRunner
 
         private void initialize()
         {
-            Console.Write("Parsing module from file ");
-            Console.ForegroundColor = ConsoleColor.White;
-            Console.WriteLine(Path.GetFileName(this.ModuleFilePath));
-            Console.ResetColor();
+            logger.Info($"Parsing module from file {Path.GetFileName(this.ModuleFilePath)}");
 
             this.code = File.ReadAllText(this.ModuleFilePath);
             this.syntaxTree = CSharpSyntaxTree.ParseText(code, null, this.ModuleFilePath, Encoding.UTF8);
             this.Name = this.getName();
-            this.getDependencies();
 
-            Console.Write("Module ");
-            Console.ForegroundColor = ConsoleColor.White;
-            Console.Write(this.Name);
-            Console.ResetColor();
-            Console.WriteLine($" has {this.RequiredDependencies.Length} required and {this.OptionalDependencies.Length} optional dependencies");
-            Console.WriteLine();
+            if (Path.GetFileNameWithoutExtension(this.ModuleFilePath) != this.Name)
+            {
+                throw new Exception($"Module {Path.GetFileName(this.ModuleFilePath)} does not have the same name as the class {this.Name} that inherits from {nameof(BattleBitModule)}");
+            }
+
+            this.getDependencies();
+            this.getMetadata();
+            
+            logger.Info($"Module {this.Name} has {this.RequiredDependencies.Length} required and {this.OptionalDependencies.Length} optional dependencies");
+        }
+
+        private void getMetadata()
+        {
+            IEnumerable<AttributeSyntax> attributeSyntaxes = syntaxTree.GetRoot().DescendantNodes().OfType<AttributeSyntax>();
+            IEnumerable<AttributeSyntax> moduleAttributes = attributeSyntaxes.Where(x => x.Name.ToString() + "Attribute" == nameof(ModuleAttribute));
+            if (moduleAttributes.Count() != 1)
+            {
+                throw new Exception("Module must have exactly one ModuleAttribute");
+            }
+
+            AttributeSyntax moduleAttribute = moduleAttributes.First();
+            IEnumerable<AttributeArgumentSyntax> moduleAttributeArguments = moduleAttribute.ArgumentList?.Arguments ?? throw new Exception("ModuleAttribute must have arguments");
+            AttributeArgumentSyntax descriptionArgument = moduleAttributeArguments.ElementAtOrDefault(0) ?? throw new Exception("ModuleAttribute must have a description argument");
+            AttributeArgumentSyntax versionArgument = moduleAttributeArguments.ElementAtOrDefault(1) ?? throw new Exception("ModuleAttribute must have a version argument");
+            this.Description = descriptionArgument.Expression.ToString().Trim('"');
+            this.Version = versionArgument.Expression.ToString().Trim('"');
         }
 
         private void getDependencies()
@@ -77,10 +153,10 @@ namespace BattleBitAPIRunner
             IEnumerable<AttributeSyntax> attributeSyntaxes = syntaxTree.GetRoot().DescendantNodes().OfType<AttributeSyntax>();
             IEnumerable<AttributeSyntax> requireModuleAttributes = attributeSyntaxes.Where(x => x.Name.ToString() + "Attribute" == nameof(RequireModuleAttribute));
             IEnumerable<AttributeSyntax> publicRequireModuleAttributes = requireModuleAttributes.Where(x => x.Parent?.Parent is ClassDeclarationSyntax classDeclarationSyntax && classDeclarationSyntax.Modifiers.Any(x => x.ToString() == "public"));
-            IEnumerable<string> requiredModuleTypes = publicRequireModuleAttributes.Select(x => x.ArgumentList?.Arguments.FirstOrDefault()?.Expression.ToString().Trim('"')[6..].Trim('(', ')').Split('.').Last()).Where(x => !string.IsNullOrWhiteSpace(x));
+            IEnumerable<string> requiredModuleTypes = publicRequireModuleAttributes.Select(x => x.ArgumentList?.Arguments.FirstOrDefault()?.Expression.ToString().Trim('"')[6..].Trim('(', ')').Split('.').Last()).Where(x => !string.IsNullOrWhiteSpace(x)).Select(s => s!);
             IEnumerable<AttributeSyntax> moduleReferenceAttributes = attributeSyntaxes.Where(x => x.Name.ToString() + "Attribute" == nameof(ModuleReferenceAttribute));
             IEnumerable<AttributeSyntax> publicModuleReferenceAttributes = moduleReferenceAttributes.Where(x => x.Parent?.Parent is PropertyDeclarationSyntax propertyDeclarationSyntax && propertyDeclarationSyntax.Modifiers.Any(x => x.ToString() == "public"));
-            IEnumerable<string> optionalModuleTypes = publicModuleReferenceAttributes.Select(x => (x.Parent?.Parent as PropertyDeclarationSyntax).Identifier.ValueText);
+            IEnumerable<string> optionalModuleTypes = publicModuleReferenceAttributes.Select(x => (x.Parent?.Parent as PropertyDeclarationSyntax)!.Identifier.ValueText);
 
             this.RequiredDependencies = requiredModuleTypes.ToArray();
             this.OptionalDependencies = optionalModuleTypes.Where(m => !this.RequiredDependencies.Contains(m)).ToArray();
@@ -102,10 +178,7 @@ namespace BattleBitAPIRunner
 
         public void Load()
         {
-            Console.Write("Loading module ");
-            Console.ForegroundColor = ConsoleColor.White;
-            Console.WriteLine(this.Name);
-            Console.ResetColor();
+            logger.Info($"Loading module {this.Name}");
 
             if (this.AssemblyBytes == null)
             {
@@ -132,34 +205,37 @@ namespace BattleBitAPIRunner
             modules.Add(this);
         }
 
-        public void Compile()
+        public static PortableExecutableReference[] baseReferences = null!;
+
+        public void Compile(PortableExecutableReference[]? extraReferences = null)
         {
             if (this.AssemblyBytes is not null)
             {
                 return;
             }
 
-            Console.Write("Compiling module ");
-            Console.ForegroundColor = ConsoleColor.White;
-            Console.WriteLine(this.Name);
-            Console.ResetColor();
+            logger.Info($"Compiling module {this.Name}");
 
-            List<PortableExecutableReference> refs = new(AppDomain.CurrentDomain.GetAssemblies().Where(a => !a.IsDynamic && !string.IsNullOrWhiteSpace(a.Location)).Select(a => MetadataReference.CreateFromFile(a.Location)));
+            List<PortableExecutableReference> references = new(baseReferences);
+
             foreach (Module module in modules)
             {
                 using (MemoryStream assemblyStream = new(module.AssemblyBytes))
                 {
-                    refs.Add(MetadataReference.CreateFromStream(assemblyStream));
+                    references.Add(MetadataReference.CreateFromStream(assemblyStream));
                 }
             }
-            refs.Add(MetadataReference.CreateFromFile(typeof(DynamicAttribute).Assembly.Location));
-            refs.Add(MetadataReference.CreateFromFile(typeof(Microsoft.CSharp.RuntimeBinder.RuntimeBinderException).Assembly.Location));
+
+            if (extraReferences is not null)
+            {
+                references.AddRange(extraReferences);
+            }
 
             CSharpCompilation compilation = CSharpCompilation.Create(this.Name)
                 .WithOptions(new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
                     .WithOptimizationLevel(OptimizationLevel.Debug)
                     .WithPlatform(Platform.AnyCpu))
-                .WithReferences(refs)
+                .WithReferences(references)
                 .AddSyntaxTrees(this.syntaxTree);
 
             using (MemoryStream assemblyStream = new())
@@ -182,6 +258,32 @@ namespace BattleBitAPIRunner
 
                 pdbStream.Seek(0, SeekOrigin.Begin);
                 this.PDBBytes = pdbStream.ToArray();
+            }
+        }
+
+        private static bool IsAssemblyValidReference(string assemblyPath)
+        {
+            try
+            {
+                string code = "class Program { static void Main() { } }";
+
+                SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(code);
+                CSharpCompilation compilation = CSharpCompilation.Create(
+                    "TempAssembly",
+                    syntaxTrees: new[] { syntaxTree },
+                    references: new[] { MetadataReference.CreateFromFile(assemblyPath), MetadataReference.CreateFromFile(typeof(object).Assembly.Location) },
+                    options: new CSharpCompilationOptions(OutputKind.ConsoleApplication));
+
+                using (var ms = new MemoryStream())
+                {
+                    EmitResult result = compilation.Emit(ms);
+
+                    return result.Success;
+                }
+            }
+            catch (Exception)
+            {
+                return false;
             }
         }
     }
