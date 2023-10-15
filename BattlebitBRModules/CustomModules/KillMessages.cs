@@ -1,10 +1,8 @@
 ﻿using BattleBitAPI.Common;
 using BattleBitBaseModules;
 using BBRAPIModules;
-using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Data;
-using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
 
@@ -15,6 +13,7 @@ using System.Threading.Tasks;
 /// 
 namespace BattlebitBRModules;
 
+[Module("Shows kill messages when killing a player","1.0")]
 public class KillMessages : BattleBitModule
 {
     [ModuleReference]
@@ -23,7 +22,7 @@ public class KillMessages : BattleBitModule
     private readonly List<ulong> c4SuicideKillerIds = new();
     private readonly List<ulong> explosiveKills = new();
 
-    private readonly Dictionary<ulong, int> killstreak = new();
+    private readonly ConcurrentDictionary<ulong, int> killstreak = new();
 
     public override async Task OnAPlayerDownedAnotherPlayer(OnPlayerKillArguments<RunnerPlayer> onPlayerKill)
     {
@@ -69,7 +68,7 @@ public class KillMessages : BattleBitModule
                 {
                     await Task.Delay(50);
                     var kills = explosiveKills.FindAll(suicider => suicider == onPlayerKill.Killer.SteamID).Count + 1;
-                    if (kills == 3)
+                    if (kills >= 3)
                     {
                         Server.SayToAllChat($"{green}{onPlayerKill.Killer.Name} {white}explodiu {red}{kills} {white}pessoas com uma {magenta}{onPlayerKill.KillerTool}");
                     }
@@ -83,8 +82,8 @@ public class KillMessages : BattleBitModule
                 break;
 
         }
-        
-        if (!killstreak.ContainsKey(onPlayerKill.Killer.SteamID)) killstreak.Add(onPlayerKill.Killer.SteamID, 0);
+
+        if (!killstreak.ContainsKey(onPlayerKill.Killer.SteamID)) killstreak.TryAdd(onPlayerKill.Killer.SteamID, 0);
         if (onPlayerKill.Killer != onPlayerKill.Victim) killstreak[onPlayerKill.Killer.SteamID]++;
 
         switch (killstreak[onPlayerKill.Killer.SteamID])
@@ -117,19 +116,19 @@ public class KillMessages : BattleBitModule
 
     public override Task OnPlayerDied(RunnerPlayer player)
     {
-        if (!killstreak.ContainsKey(player.SteamID)) killstreak.Add(player.SteamID, 0);
+        if (!killstreak.ContainsKey(player.SteamID)) killstreak.TryAdd(player.SteamID, 0);
         killstreak[player.SteamID] = 0;
         return Task.CompletedTask;
     }
 
     public override Task OnPlayerConnected(RunnerPlayer player)
     {
-        if (!killstreak.ContainsKey(player.SteamID)) killstreak.Add(player.SteamID, 0);
+        if (!killstreak.ContainsKey(player.SteamID)) killstreak.TryAdd(player.SteamID, 0);
         return Task.CompletedTask;
     }
     public override Task OnPlayerDisconnected(RunnerPlayer player)
     {
-        killstreak.Remove(player.SteamID);
+        killstreak.TryRemove(player.SteamID, out var _);
         return Task.CompletedTask;
     }
 }

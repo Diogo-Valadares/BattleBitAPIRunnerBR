@@ -10,8 +10,10 @@ namespace BattleBitBaseModules;
 
 /// <summary>
 /// Author: @RainOrigami expanded by @_dx2
-/// Version: 1.1
 /// </summary>
+[RequireModule(typeof(CommandHandler))]
+[Module(@"This version of gamemode rotation allows you to set up a different set of gamemodes each match, 
+forcing a diversity of gamemodes of the server.", "1.1")]
 public class GameModeRotation : BattleBitModule
 {
     public GameModeRotationConfiguration Configuration { get; set; }
@@ -26,10 +28,10 @@ public class GameModeRotation : BattleBitModule
             ActiveGamemodes.AddRange(rotation);
         }
         ActiveGamemodes = ActiveGamemodes.Distinct().ToList()
-            .ConvertAll(gm => { 
+            .ConvertAll(gm => {
                 var name = FindGameMode(gm);
                 if (name == null) Console.WriteLine($"{Server.ServerName} GameModeRotation: {gm} not found, did you type correctly?");
-                return name??"";
+                return name ?? "";
             });
     }
 
@@ -143,35 +145,27 @@ public class GameModeRotation : BattleBitModule
 
 public class GameModeRotationConfiguration : ModuleConfiguration
 {
-    //This works a bit differently from the default rotation module. You can have every mode enabled all the time
-    //like the default rotation module OR you can separate this in multiple lists,
-    //where each one will appear in a separate match. 
-    public string[][] GameModes { get; set; } = new[]
+    public int GameModesInVotingScreen { get; set; } = 3;
+    public int[] MatchesSinceSelection { get; set; } = new int[1];
+    public string[] GameModes { get; set; } = new[]
     {
-        new []{
-            "TDM",
-            "AAS",
-            "RUSH",
-            "CONQ",
-            "DOMI",
-            "ELI",
-            "INFCONQ",
-            "FRONTLINE",
-            "GunGameFFA",
-            "FFA",
-            "GunGameTeam",
-            "SuicideRush",
-            "CatchGame",
-            "Infected",
-            "CashRun",
-            "VoxelFortify",
-            "VoxelTrench",
-            "CaptureTheFlag"
-        },
-        new[]
-        {
-            "CONQ",
-            "DOMI"
-        }
+        "TDM",
+        "AAS",
+        "RUSH",
+        "CONQ",
+        "DOMI",
+        "ELI",
+        "INFCONQ",
+        "FRONTLINE",
+        "GunGameFFA",
+        "FFA",
+        "GunGameTeam",
+        "SuicideRush",
+        "CatchGame",
+        "Infected",
+        "CashRun",
+        "VoxelFortify",
+        "VoxelTrench",
+        "CaptureTheFlag"
     };
 }

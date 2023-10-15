@@ -9,9 +9,13 @@ namespace BattleBitBaseModules;
 
 /// <summary>
 /// Author: @RainOrigami modified by @_dx2
-/// Version: 1.4.1
 /// </summary>
 [RequireModule(typeof(GameModeRotation))]
+[RequireModule(typeof(CommandHandler))]
+[Module(@"Adds a small tweak to the map rotation so that maps that were just played take more time to appear again, 
+this works by counting how many matches happened since the maps were last played and before getting to the voting screen,
+the n least played ones are picked to appear on the voting screen . It also adds a command so that any player can know 
+what maps are in the rotation.", "1.4.2")]
 public class MapRotation : BattleBitModule
 {
     [ModuleReference]
@@ -36,7 +40,7 @@ public class MapRotation : BattleBitModule
             }
         }
 
-        var currentRotation = GameModeRotation.ActiveGamemodes.ConvertAll(name => name.ToLower());        
+        var currentRotation = GameModeRotation.ActiveGamemodes.ConvertAll(name => name.ToLower());
 
         var currentMapNames = Configuration.Maps.ToList();
         var currentMaps = MapInfo.maps.ToList().FindAll(map => currentMapNames.Contains(map.Name));
@@ -84,9 +88,9 @@ public class MapRotation : BattleBitModule
             else
             {
                 Console.WriteLine($"{Server.ServerName} MapRotation: Starting new match in {Server.Map}");
-               Configuration.MatchesSinceSelection[currentMapIndex] = 0;
+                Configuration.MatchesSinceSelection[currentMapIndex] = 0;
             }
-            var currentGamemodes = Array.ConvertAll(Server.GamemodeRotation.GetGamemodeRotation().ToArray(),gm => GameModeRotation.FindGameMode(gm) ?? "") ?? Array.Empty<string>();
+            var currentGamemodes = Array.ConvertAll(Server.GamemodeRotation.GetGamemodeRotation().ToArray(), gm => GameModeRotation.FindGameMode(gm) ?? "") ?? Array.Empty<string>();
 
             var sortedMaps = Configuration.Maps.Zip(Configuration.MatchesSinceSelection)
                 .OrderByDescending(map => map.Second).ToList();
@@ -511,6 +515,13 @@ public class MapRotation : BattleBitModule
             ("CONQ", new [] {MapSize._32vs32,MapSize._64vs64,MapSize._127vs127,}),
             ("ELI", new [] {MapSize._16vs16,MapSize._32vs32,}),
         }),
+        new MapInfo("ZalfiBay", new[]{
+            ("CONQ", new [] {MapSize._32vs32,MapSize._64vs64,MapSize._127vs127,}),
+            ("INFCONQ", new [] {MapSize._32vs32, MapSize._64vs64,MapSize._127vs127,}),
+            ("DOMI", new [] { MapSize._16vs16, MapSize._32vs32,MapSize._64vs64,MapSize._127vs127,}),
+            ("FRONTLINE", new [] {MapSize._32vs32,MapSize._64vs64,MapSize._127vs127,}),
+            ("CTF", new [] {MapSize._32vs32,MapSize._64vs64,MapSize._127vs127,}),
+        }),
     };
     }
 }
@@ -544,6 +555,7 @@ public class MapRotationConfiguration : ModuleConfiguration
         "Old_District",
         "Old_OilDunes",
         "Old_Eduardovo",
-        "Old_MultuIslands"
+        "Old_MultuIslands",
+        "ZalfiBay"
     };
 }
