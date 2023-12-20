@@ -1,11 +1,6 @@
 using BattleBitAPIRunner;
-using BBRAPIModules;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis;
-using Newtonsoft.Json;
-using Microsoft.CodeAnalysis.CSharp;
-using System.Text;
-using System.Collections.ObjectModel;
+using System.Text.Json;
 
 namespace BBRAPIModuleVerification;
 
@@ -19,6 +14,8 @@ internal class Program
             return;
         }
 
+        Module.LoadContext(Array.Empty<string>());
+
         string filePath = args[0];
 
         Module module;
@@ -28,7 +25,7 @@ internal class Program
         }
         catch (Exception e)
         {
-            Console.WriteLine(JsonConvert.SerializeObject(new VerificationResponse(false, Path.GetFileNameWithoutExtension(filePath), null, null, null, null, e.Message)));
+            Console.WriteLine(JsonSerializer.Serialize(new VerificationResponse(false, Path.GetFileNameWithoutExtension(filePath), null, null, null, null, e.Message)));
             return;
         }
 
@@ -49,7 +46,7 @@ internal class Program
 
         if (missingDependencies.Count > 0)
         {
-            Console.WriteLine(JsonConvert.SerializeObject(new VerificationResponse(false, module.Name, module.Description, module.Version, module.RequiredDependencies, module.OptionalDependencies, $"Missing dependencies: {string.Join(", ", missingDependencies)}")));
+            Console.WriteLine(JsonSerializer.Serialize(new VerificationResponse(false, module.Name, module.Description, module.Version, module.RequiredDependencies, module.OptionalDependencies, $"Missing dependencies: {string.Join(", ", missingDependencies)}")));
             return;
         }
 
@@ -62,11 +59,11 @@ internal class Program
             }
             File.WriteAllBytes($"./cache/modules/{module.Name}/{module.Name}.dll", module.AssemblyBytes);
 
-            Console.WriteLine(JsonConvert.SerializeObject(new VerificationResponse(true, module.Name, module.Description, module.Version, module.RequiredDependencies, module.OptionalDependencies, null)));
+            Console.WriteLine(JsonSerializer.Serialize(new VerificationResponse(true, module.Name, module.Description, module.Version, module.RequiredDependencies, module.OptionalDependencies, null)));
         }
         catch (Exception e)
         {
-            Console.WriteLine(JsonConvert.SerializeObject(new VerificationResponse(false, module.Name, module.Description, module.Version, module.RequiredDependencies, module.OptionalDependencies, e.Message)));
+            Console.WriteLine(JsonSerializer.Serialize(new VerificationResponse(false, module.Name, module.Description, module.Version, module.RequiredDependencies, module.OptionalDependencies, e.Message)));
             return;
         }
     }
