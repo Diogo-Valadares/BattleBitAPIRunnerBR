@@ -3,18 +3,16 @@ using BattleBitAPI.Server;
 using BBRAPIModules;
 using log4net;
 using log4net.Config;
-using log4net.Core;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.Operations;
 using Microsoft.Extensions.Configuration;
-using Newtonsoft.Json;
 using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
 using System.Net;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
-using System.Xml.Linq;
+using System.Text.Encodings.Web;
+using System.Text.Json;
 
 namespace BattleBitAPIRunner
 {
@@ -25,20 +23,57 @@ namespace BattleBitAPIRunner
             new Program();
         }
 
+        internal static readonly JsonSerializerOptions JsonSerializerOptions = new JsonSerializerOptions()
+        {
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            WriteIndented = true,
+            AllowTrailingCommas = true
+        };
+
         private ILog logger = null!;
 
         private ServerConfiguration configuration = new();
         private List<RunnerServer> servers = new();
         private ServerListener<RunnerPlayer, RunnerServer> serverListener = new();
         private Dictionary<string, (string Hash, DateTime LastModified)> watchedFiles = new();
-        private Permissions permissions = null!;
 
         public Program()
         {
             configureLogger();
-            loadConfiguration();
-            validateConfiguration();
-            loadPermissions();
+
+            try
+            {
+                loadConfiguration();
+            }
+            catch (Exception ex)
+            {
+                logger.Error("Failed to load configuration", ex);
+                Environment.Exit(-1);
+                return;
+            }
+
+            try
+            {
+                validateConfiguration();
+            }
+            catch (Exception ex)
+            {
+                logger.Error("Failed to validate configuration", ex);
+                Environment.Exit(-1);
+                return;
+            }
+
+            try
+            {
+                prepareDirectories();
+            }
+            catch (Exception ex)
+            {
+                logger.Error("Failed to prepare directories", ex);
+                Environment.Exit(-1);
+                return;
+            }
+
             this.logger.Info("Loading dependencies");
             loadDependencies();
             loadModules();
@@ -51,12 +86,12 @@ namespace BattleBitAPIRunner
             Thread.Sleep(-1);
         }
 
-        private void loadPermissions()
+        private void prepareDirectories()
         {
-            this.permissions = new(configuration.ConfigurationPath);
-            this.watchedFiles.Add(Path.Combine(this.configuration.ConfigurationPath, Permissions.PermissionsFile), (string.Empty, DateTime.MinValue));
-            this.watchedFiles.Add(Path.Combine(this.configuration.ConfigurationPath, Permissions.PlayerPermissionsFile), (string.Empty, DateTime.MinValue));
-            this.watchedFiles.Add(Path.Combine(this.configuration.ConfigurationPath, Permissions.PlayerGroupsFile), (string.Empty, DateTime.MinValue));
+            if (!Directory.Exists(this.configuration.ConfigurationPath))
+            {
+                Directory.CreateDirectory(this.configuration.ConfigurationPath);
+            }
         }
 
         private void configureLogger()
@@ -68,11 +103,11 @@ namespace BattleBitAPIRunner
 <log4net>
     <root>
         <level value=""INFO"" />
-        <appender-ref ref=""ColoredConsoleAppender"" />
+        <appender-ref ref=""ManagedColoredConsoleAppender"" />
     </root>
-    <appender name=""ColoredConsoleAppender"" type=""log4net.Appender.ColoredConsoleAppender"">
+    <appender name=""ManagedColoredConsoleAppender"" type=""log4net.Appender.ManagedColoredConsoleAppender"">
         <layout type=""log4net.Layout.PatternLayout"">
-            <conversionPattern value=""%date [%type{1}] %level - %message%newline"" />
+            <conversionPattern value=""%date [%logger] %level - %message%newline"" />
         </layout>
 		<mapping>
 			<level value=""WARN"" />
@@ -213,7 +248,6 @@ namespace BattleBitAPIRunner
                 return;
             }
 
-            // TODO: Make proper console handler ncurses style (separate line for input, rest of window for output)
             while (true)
             {
                 string? command = Console.ReadLine();
@@ -242,11 +276,6 @@ namespace BattleBitAPIRunner
 
                         instances.Add(moduleInstance);
                         moduleInstance.OnConsoleCommand(command);
-                    }
-
-                    foreach (BattleBitModule moduleInstance in instances)
-                    {
-                        moduleInstance.Unload();
                     }
                 }
 
@@ -453,6 +482,7 @@ namespace BattleBitAPIRunner
 
         private void loadServerModules(RunnerServer server, IPAddress? ip = null, ushort? port = null)
         {
+            ILog logger = LogManager.GetLogger($"Runner of {ip ?? server.GameIP}:{port ?? server.GamePort}");
             List<BattleBitModule> battleBitModules = new();
 
             foreach (Module module in Module.Modules)
@@ -465,12 +495,6 @@ namespace BattleBitAPIRunner
                     {
                         throw new Exception($"Not inheriting from {nameof(BattleBitModule)}");
                     }
-                    ILog logger = LogManager.GetLogger($"{module.Name} of {ip ?? server.GameIP}:{port ?? server.GamePort}");
-                    moduleInstance.SetPermissions(this.permissions);
-                    moduleInstance.SetLogger(logger);
-                    moduleInstance.SetServer(server);
-                    server.AddModule(moduleInstance);
-                    battleBitModules.Add(moduleInstance);
                 }
                 catch (Exception ex)
                 {
@@ -483,11 +507,6 @@ namespace BattleBitAPIRunner
                 {
                     try
                     {
-                        if (!property.PropertyType.IsAssignableTo(typeof(ModuleConfiguration)))
-                        {
-                            throw new Exception($"Configuration does not inherit from {nameof(ModuleConfiguration)}");
-                        }
-
                         ModuleConfiguration moduleConfiguration = (Activator.CreateInstance(property.PropertyType) as ModuleConfiguration)!;
                         moduleConfiguration.Initialize(moduleInstance, property, $"{ip ?? server.GameIP}_{port ?? server.GamePort}");
                         moduleConfiguration.OnLoadingRequest += ModuleConfiguration_OnLoadingRequest;
@@ -496,10 +515,15 @@ namespace BattleBitAPIRunner
                     }
                     catch (Exception ex)
                     {
-                        logger.Error($"Failed to load module {module.Name} configuration {property.Name}", ex);
+                        logger.Error($"Failed to load configuration {property.Name} for module {module.Name}, not loading module.", ex);
                         continue;
                     }
                 }
+
+                moduleInstance.SetLogger(LogManager.GetLogger($"{module.Name} of {ip ?? server.GameIP}:{port ?? server.GamePort}"));
+                moduleInstance.SetServer(server);
+                server.AddModule(moduleInstance);
+                battleBitModules.Add(moduleInstance);
             }
 
             battleBitModules = battleBitModules.Where(m => m.Server is not null).ToList();
@@ -536,7 +560,7 @@ namespace BattleBitAPIRunner
                 }
                 catch (Exception ex)
                 {
-                    logger.Error($"Method {nameof(battleBitModule.OnModulesLoaded)} on module {battleBitModule.GetType().Name} threw an exception", ex);
+                    logger.Error($"Method {nameof(battleBitModule.OnModulesLoaded)} on module {battleBitModule.GetType().Name} threw an exception", ex.InnerException);
                 }
                 stopwatch.Stop();
 
@@ -567,7 +591,14 @@ namespace BattleBitAPIRunner
                 return; // nothing to save
             }
 
-            File.WriteAllText(filePath, JsonConvert.SerializeObject(configurationValue, Formatting.Indented));
+            try
+            {
+                File.WriteAllText(filePath, JsonSerializer.Serialize(configurationValue, configurationValue.GetType(), Program.JsonSerializerOptions));
+            }
+            catch (Exception ex)
+            {
+                this.logger.Error($"Failed to save configuration {property.Name} for module {module.GetType().Name}.", ex);
+            }
         }
 
         private void ModuleConfiguration_OnLoadingRequest(object? sender, BattleBitModule module, PropertyInfo property, string serverName)
@@ -589,7 +620,7 @@ namespace BattleBitAPIRunner
 
             if (File.Exists(filePath))
             {
-                configurationValue = JsonConvert.DeserializeObject(File.ReadAllText(filePath), property.PropertyType, new JsonSerializerSettings() { ObjectCreationHandling = ObjectCreationHandling.Replace }) as ModuleConfiguration;
+                configurationValue = JsonSerializer.Deserialize(File.ReadAllText(filePath), property.PropertyType) as ModuleConfiguration;
 
                 if (configurationValue is null)
                 {
@@ -606,7 +637,7 @@ namespace BattleBitAPIRunner
 
                 if (!File.Exists(filePath))
                 {
-                    File.WriteAllText(filePath, JsonConvert.SerializeObject(configurationValue, Formatting.Indented));
+                    File.WriteAllText(filePath, JsonSerializer.Serialize(configurationValue, configurationValue!.GetType(), Program.JsonSerializerOptions));
                 }
             }
 
@@ -634,7 +665,7 @@ namespace BattleBitAPIRunner
         {
             if (!File.Exists("appsettings.json"))
             {
-                File.WriteAllText("appsettings.json", JsonConvert.SerializeObject(this.configuration, Formatting.Indented));
+                File.WriteAllText("appsettings.json", JsonSerializer.Serialize(this.configuration, Program.JsonSerializerOptions));
             }
 
             new ConfigurationBuilder()
@@ -642,11 +673,6 @@ namespace BattleBitAPIRunner
                 .AddJsonFile("appsettings.json")
                 .Build()
                 .Bind(this.configuration);
-
-            if (!Directory.Exists(this.configuration.ConfigurationPath))
-            {
-                Directory.CreateDirectory(this.configuration.ConfigurationPath);
-            }
         }
 
         private void validateConfiguration()

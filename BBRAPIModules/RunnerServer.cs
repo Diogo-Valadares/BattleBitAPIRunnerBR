@@ -3,7 +3,6 @@ using BattleBitAPI.Server;
 using log4net;
 using System.Diagnostics;
 using System.Net;
-using System.Runtime.CompilerServices;
 
 namespace BBRAPIModules
 {
@@ -72,7 +71,7 @@ namespace BBRAPIModules
                 }
                 catch (Exception ex)
                 {
-                    this.logger.Error($"Method {method} on module {module.GetType().Name} threw an exception", ex);
+                    this.logger.Error($"Method {method} on module {module.GetType().Name} threw an exception", ex.InnerException);
                 }
                 stopwatch.Stop();
 
@@ -114,7 +113,7 @@ namespace BBRAPIModules
                 }
                 catch (Exception ex)
                 {
-                    this.logger.Error($"Method {method} on module {module.GetType().Name} threw an exception", ex);
+                    this.logger.Error($"Method {method} on module {module.GetType().Name} threw an exception", ex.InnerException);
                 }
                 stopwatch.Stop();
 
@@ -138,7 +137,7 @@ namespace BBRAPIModules
                 }
                 catch (Exception ex)
                 {
-                    this.logger.Error($"Method {method} on module {module.GetType().Name} threw an exception", ex);
+                    this.logger.Error($"Method {method} on module {module.GetType().Name} threw an exception", ex.InnerException);
                 }
                 stopwatch.Stop();
 
