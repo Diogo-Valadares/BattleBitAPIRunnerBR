@@ -17,7 +17,6 @@ namespace BattlebitBRModules
         public bool Bleeding { get; set; } = true;
         public bool StaminaEnabled { get; set; } = false;
 
-
         public float BleedMinLife { get; set; } = 40;
         public float HpPerBandage { get; set; } = 40;
         public float ReloadSpeedMultiplier { get; set; } = 1f;
@@ -45,8 +44,8 @@ namespace BattlebitBRModules
             commandHandler.Register(this);
         }
 
-        [CommandCallback("TogItem", Description = "Toggles an server item on", AllowedRoles = Roles.Admin)]
-        public void TogItem(RunnerPlayer commandSource, string item, bool on)
+        [CommandCallback("Item", Description = "Toggles an server item on", AllowedRoles = Roles.Admin)]
+        public void Item(RunnerPlayer commandSource, string item, bool on)
         {
             switch (item)
             {
@@ -73,12 +72,13 @@ namespace BattlebitBRModules
             }
         }
 
-        [CommandCallback("TogMechanic", Description = "Toggles an server mechanic on or off", AllowedRoles = Roles.Admin)]
-        public void TogMechanic(RunnerPlayer commandSource, string mechanic, bool on)
+        [CommandCallback("Mechanic", Description = "Toggles an server mechanic on or off", AllowedRoles = Roles.Admin)]
+        public void Mechanic(RunnerPlayer commandSource, string mechanic, bool on)
         {
             switch (mechanic)
             {
                 case "bleeding":
+                case "bleed":
                     Server.AnnounceShort("Bleeding is now " + (on ? "enabled" : "disabled"));
                     ServerMiscConfig.Bleeding = on;
                     if (on)
